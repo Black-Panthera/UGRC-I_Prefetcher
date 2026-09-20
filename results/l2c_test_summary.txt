@@ -1,0 +1,19 @@
+L2C PREFETCHER TEST REPORT (Wed Aug 19 05:35:40 PM IST 2026)
+------------------------------------------------------------
+MODULE             | CONFIG/BUILD | SIMULATION   | REQUESTED  | USEFUL    
+------------------------------------------------------------
+no                 | BUILD_FAIL   | SKIPPED      | -          | -         
+next_line          | BUILD_FAIL   | SKIPPED      | -          | -         
+ip_stride          | BUILD_FAIL   | SKIPPED      | -          | -         
+stride_pythia      | BUILD_FAIL   | SKIPPED      | -          | -         
+streamer           | BUILD_FAIL   | SKIPPED      | -          | -         
+stream_dpc2        | BUILD_FAIL   | SKIPPED      | -          | -         
+bop                | BUILD_FAIL   | SKIPPED      | -          | -         
+mlop               | BUILD_FAIL   | SKIPPED      | -          | -         
+sms                | BUILD_FAIL   | SKIPPED      | -          | -         
+ampm               | BUILD_FAIL   | SKIPPED      | -          | -         
+ampm_lite          | BUILD_FAIL   | SKIPPED      | -          | -         
+bingo              | BUILD_FAIL   | SKIPPED      | -          | -         
+bingo_plus         | BUILD_FAIL   | SKIPPED      | -          | -         
+dspatch            | BUILD_FAIL   | SKIPPED      | -          | -         
+spp_dev            | BUILD_FAIL   | SKIPPED      | -          | -         

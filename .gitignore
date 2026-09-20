@@ -29,4 +29,17 @@ absolute.options
 compile_commands.json
 
 .vscode/
+.idea/
 **/.DS_Store
+
+# Large trace files (>100MB limit on GitHub)
+traces/
+*.champsimtrace*
+*.xz
+
+# Old / discarded plots
+plots/
+
+# Intermediate trace dumps
+pathfinder_record*.txt
+pathfinder_predictions*.txt

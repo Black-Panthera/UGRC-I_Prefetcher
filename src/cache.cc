@@ -285,6 +285,10 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
       ++sim_stats.pf_useful;
       way->prefetch = false;
     }
+
+    if (should_activate_prefetcher(handle_pkt))
+      impl_prefetcher_cache_operate_with_id(module_address(handle_pkt), handle_pkt.ip, true, handle_pkt.type, handle_pkt.instr_id,
+                                            current_time.time_since_epoch() / clock_period);
   }
 
   return hit;
@@ -507,6 +511,13 @@ long CACHE::operate()
   auto hits_end = std::stable_partition(tag_check_ready_begin, tag_check_ready_end, [this](const auto& pkt) { return this->try_hit(pkt); });
   auto finish_tag_check_end = std::stable_partition(hits_end, tag_check_ready_end, do_handle_miss);
   tag_check_bw.consume(std::distance(tag_check_ready_begin, finish_tag_check_end));
+
+  for (auto it = hits_end; it != finish_tag_check_end; ++it) {
+    if (should_activate_prefetcher(*it))
+      impl_prefetcher_cache_operate_with_id(module_address(*it), it->ip, false, it->type, it->instr_id,
+                                            current_time.time_since_epoch() / clock_period);
+  }
+
   inflight_tag_check.erase(tag_check_ready_begin, finish_tag_check_end);
 
   impl_prefetcher_cycle_operate();
@@ -793,6 +804,12 @@ uint32_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::
                                               uint32_t metadata_in) const
 {
   return pref_module_pimpl->impl_prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in);
+}
+
+void CACHE::impl_prefetcher_cache_operate_with_id(champsim::address addr, champsim::address ip, bool cache_hit, access_type type, uint64_t instr_id,
+                                                  uint64_t cycle) const
+{
+  pref_module_pimpl->impl_prefetcher_cache_operate_with_id(addr, ip, cache_hit, type, instr_id, cycle);
 }
 
 uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
