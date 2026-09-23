@@ -1,3 +1,4 @@
+# ChampSim Configuration & Build Artifacts
 .csconfig/
 _configuration.mk
 
@@ -28,6 +29,7 @@ absolute.options
 .cache/
 compile_commands.json
 
+# IDE & Editor files
 .vscode/
 .idea/
 **/.DS_Store
@@ -38,8 +40,43 @@ traces/
 *.xz
 
 # Old / discarded plots
+# Intermediate trace dumps & SNN predictions
+pathfinder_record*.txt
+pathfinder_predictions*.txt
+
+# Simulation Outputs, Graphs & Logs
+results/
+graphs/
 plots/
+build_logs/
+*.log
+simulation_summary.csv
 
 # Intermediate trace dumps
 pathfinder_record*.txt
 pathfinder_predictions*.txt
+# Local Experiment & Plotting Scripts
+generate_graphs.py
+graph_plots.py
+plot_pathfinder_vs_baseline.py
+run_experiments.py
+test_pref.sh
+
+# Duplicate / Deprecated Configs
+pathfinder_config.json
+pathfinder_record_config.json
+
+# Python Virtual Environments & Packages
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# PyTorch / ML Artifacts & Local Bindsnet Clone
+pathfinder_engine/bindsnet/
+*.pt
+*.pth
+*.onnx

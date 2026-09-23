@@ -1,6 +1,0 @@
-Trace,Cache,Prefetcher,Address,Cores,Warmup,Sim,IPC,L1D_Misses,L1D_Useful,L1D_Useless,L2C_Misses,L2C_Useful,L2C_Useless
-perlbench_210B,L2C,ipstride,physical,1core,100Kwarm,1Msim,2.387,1247,0,0,1293,282,0
-perlbench_210B,L2C,nextline,virtual,1core,100Kwarm,1Msim.txt,2.386,1243,0,0,1290,288,0
-perlbench_210B,L1D,nextline,virtual,1core,100Kwarm,1Msim,2.387,2261,230,95,1035,0,0
-perlbench_210B,L2C,nextline,physical,1core,100Kwarm,1Msim,2.387,2400,241,101,1046,0,0
-perlbench_210B,NONE,no,physical,1core,100Kwarm,1Msim,2.387,1342,0,0,840,0,0

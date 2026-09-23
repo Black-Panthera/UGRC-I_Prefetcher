@@ -9,17 +9,39 @@ to learn delta patterns per (PC, page) and predict lookahead prefetch addresses.
 
 from __future__ import annotations
 
-import argparse
 import os
 import sys
+
+# Configure 1 thread per worker to avoid OpenMP lock contention / thrashing
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+import argparse
+import collections.abc
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import List, Tuple
 
-# Plumbing to ensure local bindsnet and model modules are imported correctly
+import torch
+torch.set_num_threads(1)
+
+# PyTorch >= 1.10 compatibility bridge for bindsnet container_abcs
+try:
+    import torch._six
+    if not hasattr(torch._six, "container_abcs"):
+        torch._six.container_abcs = collections.abc
+    if not hasattr(torch._six, "string_classes"):
+        torch._six.string_classes = (str, bytes)
+    if not hasattr(torch._six, "int_classes"):
+        torch._six.int_classes = int
+except Exception:
+    pass
+
 ENGINE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ENGINE_DIR / "bindsnet"))
 sys.path.insert(0, str(ENGINE_DIR))
 
 import model
@@ -44,7 +66,7 @@ def load_record_data(record_path: Path) -> List[Tuple[int, int, int, int, bool]]
     return data
 
 
-def generate_trace_predictions(record_file: str, output_file: str) -> int:
+def generate_trace_predictions(record_file: str, output_file: str, warmup_instructions: int = 100000) -> int:
     rec_path = Path(record_file)
     out_path = Path(output_file)
 
@@ -58,8 +80,17 @@ def generate_trace_predictions(record_file: str, output_file: str) -> int:
         out_path.write_text("")
         return 0
 
+    train_data = [d for d in data if d[0] <= warmup_instructions]
+    eval_data = [d for d in data if d[0] > warmup_instructions]
+
     snn = model.MLPrefetchModel_pathfinder_pcpage()
-    predictions = snn.generate(data)
+    if train_data:
+        print(f"[SNN Engine] Training STDP on {len(train_data)} warmup loads...")
+        snn.train(train_data)
+
+    target_data = eval_data if eval_data else data
+    print(f"[SNN Engine] Generating lookahead predictions on {len(target_data)} evaluation loads...")
+    predictions = snn.generate(target_data)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
@@ -75,6 +106,15 @@ def generate_trace_predictions(record_file: str, output_file: str) -> int:
 
 
 def process_wrapper(args_tuple):
+    import os
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    import torch
+    torch.set_num_threads(1)
+    
+    if len(args_tuple) == 3:
+        rec_f, out_f, warmup = args_tuple
+        return generate_trace_predictions(rec_f, out_f, warmup)
     rec_f, out_f = args_tuple
     return generate_trace_predictions(rec_f, out_f)
 
@@ -84,7 +124,7 @@ def main():
     parser.add_argument("--record-file", help="Input recorded trace file (.txt)")
     parser.add_argument("--output-file", help="Output predictions file (.txt)")
     parser.add_argument("--all", action="store_true", help="Generate predictions for all 4 standard benchmark traces in parallel")
-    parser.add_argument("--champsim-root", default="/home/rama/ChampSim", help="ChampSim repository root directory")
+    parser.add_argument("--champsim-root", default=str(ENGINE_DIR.parent), help="ChampSim repository root directory")
 
     args = parser.parse_args()
     root = Path(args.champsim_root)

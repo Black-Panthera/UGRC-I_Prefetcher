@@ -35,3 +35,4 @@ Design and evaluate **data prefetching algorithms that are**:
 * **Practical for CPU implementation** (low latency, hardware-friendly)
 
 Use **LLMs as an offline analysis tool** to study memory access patterns and *help design smarter heuristics*.
+

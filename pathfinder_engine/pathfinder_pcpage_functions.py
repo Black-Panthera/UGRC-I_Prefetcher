@@ -2,8 +2,24 @@
 
 import sys
 sys.path.insert(0, './bindsnet')
+import pathlib
+ENGINE_DIR = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(ENGINE_DIR / "bindsnet"))
 
+import collections.abc
 import torch
+
+# PyTorch >= 1.10 compatibility bridge for bindsnet container_abcs
+try:
+    import torch._six
+    if not hasattr(torch._six, "container_abcs"):
+        torch._six.container_abcs = collections.abc
+    if not hasattr(torch._six, "string_classes"):
+        torch._six.string_classes = (str, bytes)
+    if not hasattr(torch._six, "int_classes"):
+        torch._six.int_classes = int
+except Exception:
+    pass
 
 from bindsnet.models import DiehlAndCook2015
 from bindsnet.network.monitors import Monitor
@@ -48,14 +64,13 @@ class CreateNetwork:
         self.voltages = {}
         for layer in set(self.network.layers):
             self.spikes[layer] = Monitor(
-                self.network.layers[layer], state_vars=["s"], time=int(time / dt), device=device
+                self.network.layers[layer], state_vars=["s"], time=int(time / dt)
             )
             self.network.add_monitor(self.spikes[layer], name="%s_spikes" % layer)
 
-
         self.output_monitor = self.spikes['Ae']
         self.voltages['Ae'] = Monitor(
-            self.network.layers['Ae'], state_vars=["v"], time=int(time / dt), device=device
+            self.network.layers['Ae'], state_vars=["v"], time=int(time / dt)
         )
         self.network.add_monitor(self.voltages['Ae'], name="%s_voltage" % layer)
 
@@ -147,23 +162,22 @@ class CreateNetwork:
         prediction_deltas = []
         if output_neurons and output_neurons[0] in self.prediction_table:
             for delta_tuple in self.prediction_table[output_neurons[0]]:
-                prediction_deltas.append( delta_tuple[0])
+                # delta_tuple is (delta, confidence)
+                if delta_tuple[0] != 0 and delta_tuple[1] >= self.confidence_threshold:
+                    prediction_deltas.append(delta_tuple[0])
+            if not prediction_deltas:
+                prediction_deltas = None
         else:
-            # todo add nextline prefetcher here
-            # prediction_delta += 1
             prediction_deltas = None
 
-
-        # check prediction table if that's okay to generate prediction(if there is neuron label pair )
-        # if not add neuron to training table
-        # update training table
-        # update prediction table, if there is existed neuron # in prediction table
         return output_neurons, prediction_deltas
 
     def label_unlabeled(self, pc, page, offset, training_table):
         if pc in training_table and page in training_table[pc]:
             fired_neuron = training_table[pc][page][2]
             delta = offset - training_table[pc][page][1]
+            if delta == 0:
+                return  # Do not associate neurons with 0-stride self-loads
             if fired_neuron >= 0 and fired_neuron not in self.prediction_table:
                 # assign new label and confidence
                 self.prediction_table[fired_neuron] = [(delta, 0)]

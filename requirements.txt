@@ -1,0 +1,7 @@
+torch>=1.10.0
+bindsnet>=0.2.7
+numpy>=1.21.0
+matplotlib>=3.5.0
+scipy>=1.8.0
+tqdm>=4.62.0
+
