@@ -64,8 +64,8 @@ uint32_t Scooby_STEntry::get_delta_sig2()
   uint32_t ptr = (n >= 4) ? (n - 4) : 0;
 
   for (uint32_t index = ptr; index < deltas.size(); ++index) {
-    int sig_delta = (deltas[index] < 0) ? (((-1) * deltas[index]) + (1 << (SIG_DELTA_BIT - 1))) : deltas[index];
-    curr_sig = ((curr_sig << SIG_SHIFT) ^ sig_delta) & SIG_MASK;
+    int sig_delta = (deltas[index] < 0) ? (((-1) * deltas[index]) + (1 << (PYTHIA_SIG_DELTA_BIT - 1))) : deltas[index];
+    curr_sig = ((curr_sig << PYTHIA_SIG_SHIFT) ^ sig_delta) & PYTHIA_SIG_MASK;
   }
 
   return curr_sig;

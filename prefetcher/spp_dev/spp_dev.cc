@@ -146,7 +146,12 @@ uint32_t spp_dev::prefetcher_cache_fill(champsim::address addr, long set, long w
   return metadata_in;
 }
 
-void spp_dev::prefetcher_final_stats() {}
+void spp_dev::prefetcher_final_stats()
+{
+  // Printed only when the fallback was used, so the output of every other run is unchanged
+  if (GHR.victim_fallbacks > 0)
+    std::cout << "SPP GHR victim fallbacks (all entries at confidence 100): " << GHR.victim_fallbacks << std::endl;
+}
 
 // TODO: Find a good 64-bit hash function
 uint64_t spp_dev::get_hash(uint64_t key)
@@ -525,10 +530,12 @@ void spp_dev::GLOBAL_REGISTER::update_entry(uint32_t pf_sig, uint32_t pf_confide
     }
   }
 
-  // Assertion
+  // The strict '<' above (as in the original SPP code) finds no victim when every entry has the maximum
+  // confidence of 100, where the original code aborted. Only in that case, replace the first entry instead.
+  // Every run that never reached this point behaves exactly as before.
   if (victim_way >= MAX_GHR_ENTRY) {
-    std::cout << "[GHR] Cannot find a replacement victim!" << std::endl;
-    assert(0);
+    victim_way = 0;
+    victim_fallbacks++;
   }
 
   if constexpr (SPP_DEBUG_PRINT) {

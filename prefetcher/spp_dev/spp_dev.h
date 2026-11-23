@@ -144,6 +144,7 @@ struct spp_dev : public champsim::modules::prefetcher {
     // Global counters to calculate global prefetching accuracy
     uint32_t pf_useful, pf_issued;
     uint32_t global_accuracy; // Alpha value in Section III. Equation 3
+    uint64_t victim_fallbacks = 0; // times every GHR entry had confidence 100 (the original code aborted there)
 
     // Global History Register (GHR) entries
     uint8_t valid[MAX_GHR_ENTRY];

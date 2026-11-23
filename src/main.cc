@@ -140,6 +140,20 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
     cache.impl_replacement_final_stats();
   }
 
+  for (CACHE& cache : gen_environment.cache_view()) {
+    if (cache.profiler.enabled) {
+      // Measured (post-warmup) region only, matching the ROI stats ChampSim prints
+      uint64_t instrs = 0;
+      uint64_t cycles = 0;
+      if (!gen_environment.cpu_view().empty()) {
+        const auto& roi = gen_environment.cpu_view().front().get().roi_stats;
+        instrs = static_cast<uint64_t>(roi.instrs());
+        cycles = static_cast<uint64_t>(roi.cycles());
+      }
+      cache.dump_profiler(instrs, cycles);
+    }
+  }
+
   if (json_option->count() > 0) {
     if (json_file_name.empty()) {
       champsim::json_printer{std::cout}.print(phase_stats);

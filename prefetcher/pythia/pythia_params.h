@@ -44,10 +44,10 @@
 #define OFFSET_SIG_MAX_BITS 24
 #define OFFSET_SIG_SHIFT 4
 
-#define SIG_SHIFT 3
-#define SIG_BIT 12
-#define SIG_MASK ((1 << SIG_BIT) - 1)
-#define SIG_DELTA_BIT 7
+#define PYTHIA_SIG_SHIFT 3
+#define PYTHIA_SIG_BIT 12
+#define PYTHIA_SIG_MASK ((1 << PYTHIA_SIG_BIT) - 1)
+#define PYTHIA_SIG_DELTA_BIT 7
 
 namespace PYTHIA
 {

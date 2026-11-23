@@ -43,7 +43,7 @@ CACHE::CACHE(CACHE&& other)
       pref_activate_mask(std::move(other.pref_activate_mask)),
 
       sim_stats(std::move(other.sim_stats)), roi_stats(std::move(other.roi_stats)),
-
+      profiler(std::move(other.profiler)),
       pref_module_pimpl(std::move(other.pref_module_pimpl)), repl_module_pimpl(std::move(other.repl_module_pimpl))
 {
   pref_module_pimpl->bind(this);
@@ -82,6 +82,7 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
 
   this->sim_stats = std::move(other.sim_stats);
   this->roi_stats = std::move(other.roi_stats);
+  this->profiler = std::move(other.profiler);
 
   this->pref_module_pimpl = std::move(other.pref_module_pimpl);
   this->repl_module_pimpl = std::move(other.repl_module_pimpl);
@@ -90,6 +91,34 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
   repl_module_pimpl->bind(this);
 
   return *this;
+}
+
+void CACHE::dump_profiler(uint64_t instrs, uint64_t cycles)
+{
+  if (!profiler.enabled) return;
+  size_t pending_internal_pq = internal_PQ.size();
+  size_t pending_inflight_tag = std::count_if(inflight_tag_check.begin(), inflight_tag_check.end(),
+      [](const auto& p) { return p.type == access_type::PREFETCH && p.prefetch_from_this; });
+  size_t pending_trans_stash = std::count_if(translation_stash.begin(), translation_stash.end(),
+      [](const auto& p) { return p.type == access_type::PREFETCH && p.prefetch_from_this; });
+
+  size_t pending_mshr = std::count_if(MSHR.begin(), MSHR.end(),
+      [](const auto& p) { return p.type == access_type::PREFETCH && p.prefetch_from_this; });
+  size_t pending_inflight_fills = std::count_if(inflight_fills.begin(), inflight_fills.end(),
+      [](const auto& p) { return p.type == access_type::PREFETCH && p.prefetch_from_this; });
+
+  size_t resident_prefetches = 0;
+  for (size_t s = 0; s < NUM_SET; ++s) {
+    for (size_t w = 0; w < NUM_WAY; ++w) {
+      if (s < profiler.line_pf_origins.size() && w < profiler.line_pf_origins[s].size()) {
+        if (profiler.line_pf_origins[s][w].valid) resident_prefetches++;
+      }
+    }
+  }
+
+  profiler.dump_json(instrs, cycles, sim_stats.pf_useful,
+                     pending_internal_pq, pending_inflight_tag, pending_trans_stash,
+                     pending_mshr, pending_inflight_fills, resident_prefetches);
 }
 
 CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref, bool skip)
@@ -211,8 +240,10 @@ bool CACHE::handle_fill(const fill_type& fill)
   }
 
   champsim::address evicting_address{};
+  bool evicting_valid = false;
   if (way != set_end && way->valid) {
     evicting_address = module_address(*way);
+    evicting_valid = true;
   }
 
   auto metadata_thru = impl_prefetcher_cache_fill(module_address(fill), get_set_index(fill.address), way_idx, (fill.type == access_type::PREFETCH),
@@ -221,7 +252,17 @@ bool CACHE::handle_fill(const fill_type& fill)
 
   if (way != set_end) {
     if (way->valid && way->prefetch) {
+      if (profiler.enabled)
+        profiler.on_eviction(get_set_index(fill.address), way_idx, true, current_time.time_since_epoch() / clock_period);
       ++sim_stats.pf_useless;
+    } else if (way->valid) {
+      if (profiler.enabled)
+        profiler.on_eviction(get_set_index(fill.address), way_idx, false, current_time.time_since_epoch() / clock_period);
+    }
+
+    if (profiler.enabled) {
+      profiler.on_handle_fill(fill.address.to<uint64_t>(), get_set_index(fill.address), way_idx,
+                              fill.prefetch_from_this, evicting_address.to<uint64_t>(), evicting_valid, current_time.time_since_epoch() / clock_period);
     }
 
     if (fill.type == access_type::PREFETCH) {
@@ -230,6 +271,9 @@ bool CACHE::handle_fill(const fill_type& fill)
 
     *way = fill_block(fill, metadata_thru);
   }
+
+  if (profiler.enabled)
+    profiler.on_fill_complete(fill.address.to<uint64_t>(), current_time.time_since_epoch() / clock_period);
 
   // COLLECT STATS
   if (fill.type != access_type::PREFETCH)
@@ -254,6 +298,13 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   const auto hit = (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
 
+  if (profiler.enabled && hit) {
+    long way_idx = std::distance(set_begin, way);
+    profiler.on_tag_check_hit(handle_pkt.address.to<uint64_t>(), handle_pkt.ip.to<uint64_t>(), handle_pkt.type, handle_pkt.source_channel,
+                              get_set_index(handle_pkt.address), way_idx, useful_prefetch, current_time.time_since_epoch() / clock_period,
+                              handle_pkt.instr_id, handle_pkt.v_address.to<uint64_t>(), should_activate_prefetcher(handle_pkt));
+  }
+
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} instr_id: {} address: {} v_address: {} data: {} set: {} way: {} ({}) type: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
                handle_pkt.address, handle_pkt.v_address, handle_pkt.data, get_set_index(handle_pkt.address), std::distance(set_begin, way),
@@ -262,7 +313,11 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 
   auto metadata_thru = handle_pkt.pf_metadata;
   if (should_activate_prefetcher(handle_pkt)) {
+    if (profiler.enabled)
+      profiler.on_prefetcher_operate_start(handle_pkt.ip.to<uint64_t>(), handle_pkt.address.to<uint64_t>(), handle_pkt.type, handle_pkt.source_channel, handle_pkt.instr_id);
     metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru);
+    if (profiler.enabled)
+      profiler.on_prefetcher_operate_end();
   }
 
   // update replacement policy
@@ -286,9 +341,14 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
       way->prefetch = false;
     }
 
-    if (should_activate_prefetcher(handle_pkt))
+    if (should_activate_prefetcher(handle_pkt)) {
+      if (profiler.enabled)
+        profiler.on_prefetcher_operate_start(handle_pkt.ip.to<uint64_t>(), handle_pkt.address.to<uint64_t>(), handle_pkt.type, handle_pkt.source_channel, handle_pkt.instr_id);
       impl_prefetcher_cache_operate_with_id(module_address(handle_pkt), handle_pkt.ip, true, handle_pkt.type, handle_pkt.instr_id,
                                             current_time.time_since_epoch() / clock_period);
+      if (profiler.enabled)
+        profiler.on_prefetcher_operate_end();
+    }
   }
 
   return hit;
@@ -346,9 +406,22 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     if (fill_entry->type == access_type::PREFETCH && handle_pkt.type != access_type::PREFETCH) {
       // Mark the prefetch as useful
       if (fill_entry->prefetch_from_this) {
+        if (profiler.enabled)
+          profiler.on_mshr_merge_demand_into_prefetch(handle_pkt.address.to<uint64_t>(), handle_pkt.type, handle_pkt.source_channel,
+                                                      current_time.time_since_epoch() / clock_period);
         ++sim_stats.pf_useful;
       }
+    } else if (handle_pkt.type == access_type::PREFETCH && handle_pkt.prefetch_from_this) {
+      if (fill_entry->type == access_type::PREFETCH) {
+        if (profiler.enabled) profiler.on_mshr_merge_prefetch_into_prefetch(handle_pkt.address.to<uint64_t>());
+      } else {
+        if (profiler.enabled) profiler.on_mshr_merge_prefetch_into_demand(handle_pkt.address.to<uint64_t>());
+      }
+    } else if (handle_pkt.type == access_type::PREFETCH && handle_pkt.source_channel == profiler.l1d_channel) {
+      if (profiler.enabled) profiler.on_l1d_prefetch_merged_inflight();
     }
+    if (profiler.enabled && handle_pkt.type != access_type::PREFETCH && fill_entry->type != access_type::PREFETCH)
+      profiler.last_miss_merged_into_demand = true;
 
     // COLLECT STATS
     sim_stats.miss_merge.increment(std::pair{to_allocate.type, to_allocate.cpu});
@@ -369,7 +442,22 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     // Allocate an MSHR
     if (mshr_pkt.second.response_requested) {
       MSHR.emplace_back(std::move(mshr_pkt.first));
+      if (profiler.enabled && handle_pkt.type == access_type::PREFETCH) {
+        if (handle_pkt.prefetch_from_this) {
+          profiler.on_mshr_allocated_forwarded_lower(handle_pkt.address.to<uint64_t>(), current_time.time_since_epoch() / clock_period);
+        } else if (handle_pkt.source_channel == profiler.l1d_channel) {
+          profiler.on_l1d_prefetch_forwarded_lower();
+        }
+      }
+    } else if (profiler.enabled && handle_pkt.type == access_type::PREFETCH && handle_pkt.prefetch_from_this) {
+      profiler.on_prefetch_forwarded_llc_only(handle_pkt.address.to<uint64_t>());
     }
+  }
+
+  if (profiler.enabled) {
+    profiler.on_tag_check_miss(handle_pkt.address.to<uint64_t>(), handle_pkt.ip.to<uint64_t>(), handle_pkt.type, handle_pkt.source_channel,
+                               current_time.time_since_epoch() / clock_period,
+                               handle_pkt.instr_id, handle_pkt.v_address.to<uint64_t>(), should_activate_prefetcher(handle_pkt));
   }
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
@@ -405,8 +493,12 @@ auto CACHE::initiate_tag_check(champsim::channel* ul)
       if (entry.response_requested) {
         retval.to_return = {&ul->returned};
       }
+      retval.source_channel = ul;
     } else {
       (void)ul; // supress warning about ul being unused
+      if constexpr (std::is_same_v<std::decay_t<decltype(entry)>, CACHE::tag_lookup_type>) {
+        retval.source_channel = entry.source_channel;
+      }
     }
 
     if constexpr (champsim::debug_print) {
@@ -513,9 +605,14 @@ long CACHE::operate()
   tag_check_bw.consume(std::distance(tag_check_ready_begin, finish_tag_check_end));
 
   for (auto it = hits_end; it != finish_tag_check_end; ++it) {
-    if (should_activate_prefetcher(*it))
+    if (should_activate_prefetcher(*it)) {
+      if (profiler.enabled)
+        profiler.on_prefetcher_operate_start(it->ip.to<uint64_t>(), it->address.to<uint64_t>(), it->type, it->source_channel, it->instr_id);
       impl_prefetcher_cache_operate_with_id(module_address(*it), it->ip, false, it->type, it->instr_id,
                                             current_time.time_since_epoch() / clock_period);
+      if (profiler.enabled)
+        profiler.on_prefetcher_operate_end();
+    }
   }
 
   inflight_tag_check.erase(tag_check_ready_begin, finish_tag_check_end);
@@ -582,9 +679,13 @@ long CACHE::invalidate_entry(champsim::address inval_addr)
 
 bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata)
 {
+  if (profiler.enabled)
+    profiler.on_prefetch_requested();
   ++sim_stats.pf_requested;
 
   if (std::size(internal_PQ) >= PQ_SIZE) {
+    if (profiler.enabled)
+      profiler.on_prefetch_rejected_pq_full(pf_addr.to<uint64_t>(), fill_this_level, current_time.time_since_epoch() / clock_period);
     return false;
   }
 
@@ -598,6 +699,9 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
 
   internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
   ++sim_stats.pf_issued;
+
+  if (profiler.enabled)
+    profiler.on_prefetch_enqueued(pf_addr.to<uint64_t>(), current_time.time_since_epoch() / clock_period, fill_this_level);
 
   return true;
 }
@@ -871,6 +975,10 @@ void CACHE::begin_phase()
     channel_type::stats_type ul_new_sim_stats;
     ul->roi_stats = ul_new_roi_stats;
     ul->sim_stats = ul_new_sim_stats;
+  }
+
+  if (profiler.enabled && !warmup) {
+    profiler.on_begin_detailed_phase();
   }
 }
 

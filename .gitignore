@@ -1,73 +1,30 @@
-# ChampSim Configuration & Build Artifacts
+# ChampSim build configuration and artifacts
 .csconfig/
 _configuration.mk
-
-**/__pycache__/
-*.pyc
-
-bin/
-
-**/*.o
-**/*.d
-
-test/000-test-main
-
-tracer/pin/obj-intel64/
-
-vcpkg_installed/
-
-**/_build
-**/_doxygen
-
 absolute.options
 **/legacy.options
 **/function_patch.options
 **/legacy_bridge.inc
 **/legacy_bridge.h
 **/legacy_bridge.cc
-
+bin/
+**/*.o
+**/*.d
+test/000-test-main
+tracer/pin/obj-intel64/
+vcpkg_installed/
+**/_build
+**/_doxygen
 .cache/
 compile_commands.json
 
-# IDE & Editor files
+# IDE and editor files
 .vscode/
 .idea/
 **/.DS_Store
 
-# Large trace files (>100MB limit on GitHub)
-traces/
-*.champsimtrace*
-*.xz
-
-# Old / discarded plots
-# Intermediate trace dumps & SNN predictions
-pathfinder_record*.txt
-pathfinder_predictions*.txt
-
-# Simulation Outputs, Graphs & Logs
-results/
-graphs/
-plots/
-build_logs/
-*.log
-simulation_summary.csv
-
-# Intermediate trace dumps
-pathfinder_record*.txt
-pathfinder_predictions*.txt
-# Local Experiment & Plotting Scripts
-generate_graphs.py
-graph_plots.py
-plot_pathfinder_vs_baseline.py
-run_experiments.py
-test_pref.sh
-
-# Duplicate / Deprecated Configs
-pathfinder_config.json
-pathfinder_record_config.json
-
-# Python Virtual Environments & Packages
-__pycache__/
+# Python
+**/__pycache__/
 *.pyc
 .venv/
 env/
@@ -75,8 +32,57 @@ venv/
 .pytest_cache/
 *.egg-info/
 
-# PyTorch / ML Artifacts & Local Bindsnet Clone
+# PyTorch / ML artifacts and the local BindsNET clone
 pathfinder_engine/bindsnet/
 *.pt
 *.pth
 *.onnx
+
+# Traces (too large for GitHub)
+traces/
+test_traces/
+*.champsimtrace*
+*.xz
+
+# Simulation outputs, graphs and logs
+results/
+recorded_requests/
+graphs/
+plots/
+build_logs/
+*.log
+simulation_summary.csv
+
+# Build configs: ChampSim's default champsim_config.json with only the prefetcher and binary name changed
+/configs/
+/config_*.json
+config_record_*.json
+pathfinder_config.json
+pathfinder_record_config.json
+
+# Pathfinder intermediate dumps and early local scripts
+pathfinder_record*.txt
+pathfinder_predictions*.txt
+comprehensive_prefetcher_analysis_report.md
+generate_graphs.py
+graph_plots.py
+plot_pathfinder_vs_baseline.py
+record_cache_requests.py
+run_experiments.py
+test_pref.sh
+
+# First pass-2 design (divergence runner), superseded by scripts/run_pass2_events.py
+scripts/run_pass2_matrix.py
+scripts/divergence_analyzer.py
+scripts/divergence_reporter.py
+
+# Profiler overhead test outputs
+/res_*.txt
+/time_*.txt
+/profiler_*.json
+
+# Report sources, talk script, presentation videos and local notes
+full_report/
+presentation/
+*.mp4
+CLEANUP_NOTES.md

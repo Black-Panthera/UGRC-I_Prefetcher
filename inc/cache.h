@@ -40,6 +40,7 @@
 #include "cache_builder.h"
 #include "cache_stats.h"
 #include "champsim.h"
+#include "champsim_profiler.h"
 #include "channel.h"
 #include "chrono.h"
 #include "modules.h"
@@ -72,6 +73,8 @@ class CACHE : public champsim::operable
     bool skip_fill;
     bool is_translated;
     bool translate_issued = false;
+
+    const champsim::channel* source_channel = nullptr;
 
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 
@@ -171,6 +174,9 @@ public:
   using stats_type = cache_stats;
 
   stats_type sim_stats, roi_stats;
+
+  champsim::champsim_profiler profiler{};
+  void dump_profiler(uint64_t instrs, uint64_t cycles);
 
   std::deque<fill_type> MSHR;
   std::deque<fill_type> inflight_fills;
@@ -329,6 +335,9 @@ public:
         prefetch_as_load(b.m_pref_load), match_offset_bits(b.m_wq_full_addr), virtual_prefetch(b.m_va_pref), pref_activate_mask(b.m_pref_act_mask),
         pref_module_pimpl(std::make_unique<prefetcher_module_model<Ps...>>(this)), repl_module_pimpl(std::make_unique<replacement_module_model<Rs...>>(this))
   {
+    profiler.init(NAME, NUM_SET, NUM_WAY,
+                  (!upper_levels.empty()) ? upper_levels[0] : nullptr,
+                  (upper_levels.size() >= 2) ? upper_levels[1] : nullptr);
   }
 
   CACHE(const CACHE&) = delete;
